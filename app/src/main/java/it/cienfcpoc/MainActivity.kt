@@ -49,8 +49,21 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
     override fun onTagDiscovered(tag: Tag) {
         val iso = IsoDep.get(tag)
-        report = if (iso == null) "CIE NFC POC — REPORT SENZA PII\nIsoDep: NON_DISPONIBILE"
-        else "CIE NFC POC — REPORT SENZA PII\nIsoDep: RILEVATO\nMax transceive: " + iso.maxTransceiveLength + "\nProbe protocolli: NON_ESEGUITO"
+        if (iso == null) {
+            report = "CIE NFC POC — REPORT SENZA PII\nIsoDep: NON_DISPONIBILE"
+        } else {
+            val canMode = findViewById<RadioButton>(R.id.modeCan).isChecked
+            val credentials = if (canMode) {
+                NfcCredentials(can = findViewById<EditText>(R.id.can).text.toString())
+            } else {
+                NfcCredentials(
+                    documentNumber = findViewById<EditText>(R.id.docNumber).text.toString(),
+                    birthYYMMDD = findViewById<EditText>(R.id.birth).text.toString(),
+                    expiryYYMMDD = findViewById<EditText>(R.id.expiry).text.toString()
+                )
+            }
+            report = CieNfcReader().read(iso, credentials)
+        }
         runOnUiThread { findViewById<TextView>(R.id.status).text = report }
         clearInputs()
         adapter?.disableReaderMode(this)
