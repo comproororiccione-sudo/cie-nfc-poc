@@ -17,6 +17,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    packaging {
+        resources {
+            pickFirsts += "META-INF/LICENSE.md"
+            pickFirsts += "META-INF/NOTICE.md"
+        }
+    }
 }
 dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
