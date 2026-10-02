@@ -83,5 +83,15 @@ class CieNfcReader {
  private fun field(out:MutableList<String>,name:String,v:Any?){val len=when(v){null->0;is String->v.length;is Collection<*>->v.sumOf{it?.toString()?.length?:0};else->v.toString().length};out+=name+": "+if(len>0)"PRESENTE lunghezza="+len else "ASSENTE"}
  private fun screenValue(s:MutableList<String>,n:String,v:Any?){if(v!=null&&v.toString().isNotBlank())s+=n+": "+v}
  private fun imageMeta(b:ByteArray?):String=if(b==null||b.isEmpty())"ASSENTE" else "PRESENTE bytes="+b.size+" (NON_DECODIFICATA)"
- private fun validCf(raw:String):Boolean{val cf=raw.uppercase();if(!cf.matches(Regex("[A-Z0-9]{16}")))return false;val odd=mapOf('0' to 1,'1' to 0,'2' to 5,'3' to 7,'4' to 9,'5' to 13,'6' to 15,'7' to 17,'8' to 19,'9' to 21,'A' to 1,'B' to 0,'C' to 5,'D' to 7,'E' to 9,'F' to 13,'G' to 15,'H' to 17,'I' to 19,'J' to 21,'K' to 2,'L' to 4,'M' to 18,'N' to 20,'O' to 11,'P' to 3,'Q' to 6,'R' to 8,'S' to 12,'T' to 14,'U' to 16,'V' to 10,'W' to 22,'X' to 25,'Y' to 24,'Z' to 23);fun even(c:Char)=if(c.isDigit())c-'0' else c-'A';var sum=0;for(i in 0..14)sum+=if(i%2==0)odd[cf[i]]?:return false else even(cf[i]);return ('A'.code+sum%26).toChar()==cf[15]}
+ private fun validCf(raw:String):Boolean {
+  val cf=raw.uppercase()
+  if(!cf.matches(Regex("[A-Z0-9]{16}"))) return false
+  val odd=mapOf('0' to 1,'1' to 0,'2' to 5,'3' to 7,'4' to 9,'5' to 13,'6' to 15,'7' to 17,'8' to 19,'9' to 21,'A' to 1,'B' to 0,'C' to 5,'D' to 7,'E' to 9,'F' to 13,'G' to 15,'H' to 17,'I' to 19,'J' to 21,'K' to 2,'L' to 4,'M' to 18,'N' to 20,'O' to 11,'P' to 3,'Q' to 6,'R' to 8,'S' to 12,'T' to 14,'U' to 16,'V' to 10,'W' to 22,'X' to 25,'Y' to 24,'Z' to 23)
+  fun even(c:Char)=if(c.isDigit()) c-'0' else c-'A'
+  var sum=0
+  for(i in 0..14) {
+   if(i%2==0) { val value=odd[cf[i]] ?: return false; sum+=value } else sum+=even(cf[i])
+  }
+  return ('A'.code+sum%26).toChar()==cf[15]
+ }
 }
