@@ -9,7 +9,7 @@ import org.jmrtd.lds.CardAccessFile
 import org.jmrtd.lds.PACEInfo
 import org.jmrtd.lds.icao.COMFile
 import org.jmrtd.lds.icao.DG1File
-import org.jmrtd.lds.icao.SODFile
+import org.jmrtd.lds.SODFile
 import java.security.MessageDigest
 
 data class NfcCredentials(val can:String?=null,val documentNumber:String?=null,val birthYYMMDD:String?=null,val expiryYYMMDD:String?=null)
