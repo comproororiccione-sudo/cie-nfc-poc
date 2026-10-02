@@ -2,10 +2,15 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CIE NFC POC v0.3" android:textSize="24sp" android:textStyle="bold"/>
-<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Offline. Scansione MRZ locale → BAC → NFC. DG2/3/4 mai letti." android:paddingTop="8dp" android:paddingBottom="12dp"/>
-<Button android:id="@+id/scanMrz" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SCANSIONA MRZ CON FOTOCAMERA"/>
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Offline. Scegli il documento: CIE usa CAN + PACE; altri documenti NFC usano MRZ. DG2/3/4 mai letti." android:paddingTop="8dp" android:paddingBottom="12dp"/>
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Tipo documento" android:textStyle="bold"/>
+<RadioGroup android:id="@+id/documentType" android:layout_width="match_parent" android:layout_height="wrap_content">
+<RadioButton android:id="@+id/documentCie" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CIE italiana — CAN" android:checked="true"/>
+<RadioButton android:id="@+id/documentMrz" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Altro documento elettronico NFC — MRZ"/>
+</RadioGroup>
+<Button android:id="@+id/scanDocument" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SCANSIONA CAN CIE"/>
 <androidx.camera.view.PreviewView android:id="@+id/cameraPreview" android:layout_width="match_parent" android:layout_height="240dp" android:visibility="gone"/>
-<TextView android:id="@+id/mrzStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="La MRZ non viene salvata né copiata." android:paddingTop="8dp" android:paddingBottom="12dp"/>
+<TextView android:id="@+id/scanStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CAN/MRZ restano solo in memoria e non vengono copiati nel report." android:paddingTop="8dp" android:paddingBottom="12dp"/>
 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Modalità diagnostiche/manuali" android:textStyle="bold"/>
 <RadioGroup android:id="@+id/mode" android:layout_width="match_parent" android:layout_height="wrap_content">
 <RadioButton android:id="@+id/modeCan" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CAN — PACE" android:checked="true"/>
