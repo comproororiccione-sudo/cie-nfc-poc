@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.nfc" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <application android:allowBackup="false" android:usesCleartextTraffic="false"
         android:label="CIE NFC POC" android:theme="@style/Theme.CieNfcPoc">
         <activity android:name=".MainActivity" android:exported="true">
