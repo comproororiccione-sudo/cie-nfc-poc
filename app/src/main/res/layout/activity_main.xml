@@ -24,6 +24,7 @@
 <Button android:id="@+id/arm" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Avvia lettura NFC manuale"/>
 <Button android:id="@+id/copyReport" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Copia report senza PII"/>
 <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="In attesa." android:paddingTop="12dp" android:textIsSelectable="true"/>
+<TextView android:id="@+id/lifecycleTrace" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="DEV lifecycle: nessun evento" android:paddingTop="12dp" android:textIsSelectable="false"/>
 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="DATI LETTI — SOLO SCHERMO" android:textStyle="bold" android:paddingTop="18dp"/>
 <TextView android:id="@+id/screenData" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Nessun dato." android:textIsSelectable="false"/>
 </LinearLayout></ScrollView>
