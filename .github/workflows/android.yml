@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
       - name: Build
-        run: gradle :app:assembleDebug --stacktrace
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - name: Final APK permissions
         run: |
           AAPT2=$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n 1)
