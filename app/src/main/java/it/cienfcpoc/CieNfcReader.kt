@@ -17,12 +17,12 @@ import org.jmrtd.lds.icao.DG12File
 import java.security.MessageDigest
 
 enum class AccessMode { CAN_PACE, MRZ_PACE_WITH_BAC_FALLBACK, BAC_ONLY }
-data class NfcCredentials(val mode:AccessMode,val can:String?=null,val documentNumber:String?=null,val birthYYMMDD:String?=null,val expiryYYMMDD:String?=null)
+enum class CredentialOrigin { SCANSIONE_CAN, MANUALE_CAN, SCANSIONE_MRZ, MANUALE_MRZ }\ndata class NfcCredentials(val mode:AccessMode,val can:String?=null,val documentNumber:String?=null,val birthYYMMDD:String?=null,val expiryYYMMDD:String?=null,val origin:CredentialOrigin)
 data class NfcReadResult(val report:String,val screenData:String)
 
 class CieNfcReader {
  fun read(isoDep:IsoDep,c:NfcCredentials):NfcReadResult {
-  val out=mutableListOf("CIE NFC POC v0.2 — REPORT SENZA PII"); val screen=mutableListOf("DATI LETTI (solo a schermo, non copiati)")
+  val out=mutableListOf("CIE NFC POC v"+BuildConfig.VERSION_NAME+" — REPORT SENZA PII","Build commit: "+BuildConfig.GIT_SHA,"Origine credenziale: "+c.origin.name); val screen=mutableListOf("DATI LETTI (solo a schermo, non copiati)")
   val started=System.currentTimeMillis(); var service:PassportService?=null
   try {
    isoDep.timeout=12000
