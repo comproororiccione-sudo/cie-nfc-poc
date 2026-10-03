@@ -194,10 +194,10 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         if(data==null){return}
         val key=data.documentNumber+"|"+data.birthYYMMDD+"|"+data.expiryYYMMDD
         mrzValid3Observed++;mrzValidKeys+=key
-        mrzLastSeenFrame[key]?.let{prev->val distance=mrzFrames-prev;mrzMinRepeatDistance=mrzMinRepeatDistance?.let{old->minOf(old,distance)}?:distance}
-        mrzLastSeenFrame[key]=mrzFrames
         val previous=mrzLastSeenFrame[key]
-        if(previous!=null && mrzFrames-previous<=10)onMrzFound(data)
+        previous?.let{prev->val distance=mrzFrames-prev;mrzMinRepeatDistance=mrzMinRepeatDistance?.let{old->minOf(old,distance)}?:distance}
+        if(previous!=null && mrzFrames-previous in 1..10)onMrzFound(data)
+        mrzLastSeenFrame[key]=mrzFrames
         lastMrzKey=key;mrzStableFrames=1
     }
 
