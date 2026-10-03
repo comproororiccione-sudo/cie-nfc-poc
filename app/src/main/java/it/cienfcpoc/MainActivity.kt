@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private var lastCanCandidate:String?=null
     private var canStableFrames=0
     private val activityId=LifecycleTrace.newActivityId()
-    private var canAcquiredAt:Long?=null
+    private var credentialAcquiredAt:Long?=null
     private var canInterruptions=0
     private var mrzFrames=0
     private var mrzRemovedChars=0
@@ -75,7 +75,14 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private var lastMrzKey:String?=null
     private var mrzStableFrames=0
     private val mainHandler=Handler(Looper.getMainLooper())
-    private val canExpiry=Runnable { if(canState()=="SCADUTO"){ clearPendingCredentials(); traceLifecycle("CAN_EXPIRED"); findViewById<TextView>(R.id.scanStatus).text="CAN scaduto. Esegui una nuova scansione." } }
+    private val credentialExpiry=Runnable {
+        if(credentialState()=="SCADUTA"){
+            val wasMrz=pending?.origin==CredentialOrigin.SCANSIONE_MRZ || pending?.origin==CredentialOrigin.MANUALE_MRZ
+            clearPendingCredentials()
+            traceLifecycle("CRED_EXPIRED")
+            findViewById<TextView>(R.id.scanStatus).text=if(wasMrz)"MRZ scaduta. Esegui una nuova scansione." else "CAN scaduto. Esegui una nuova scansione."
+        }
+    }
     private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
         if(granted) startDocumentCamera() else Toast.makeText(this,"Permesso fotocamera necessario per la scansione",Toast.LENGTH_LONG).show()
     }
@@ -108,7 +115,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         }
         findViewById<Button>(R.id.arm).setOnClickListener{
             pending=snapshotCredentials()?:return@setOnClickListener
-            if(pending!!.mode==AccessMode.CAN_PACE){canAcquiredAt=SystemClock.elapsedRealtime();canInterruptions=0;scheduleCanExpiry()}
+            credentialAcquiredAt=SystemClock.elapsedRealtime();canInterruptions=0;scheduleCredentialExpiry()
             armNfc(if(pending!!.mode==AccessMode.BAC_ONLY)"SOLO BAC: usa un nuovo avvicinamento fisico del documento." else "Pronto. Avvicina il documento NFC.")
         }
         findViewById<Button>(R.id.copyReport).setOnClickListener{
@@ -186,8 +193,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private fun onCanFound(can:String){
         if(pending!=null)return
         pending=NfcCredentials(AccessMode.CAN_PACE,can=can,origin=CredentialOrigin.SCANSIONE_CAN)
-        canAcquiredAt=SystemClock.elapsedRealtime()
-        scheduleCanExpiry()
+        credentialAcquiredAt=SystemClock.elapsedRealtime()
+        scheduleCredentialExpiry()
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<TextView>(R.id.scanStatus).text="CAN rilevato. Valore nascosto e mantenuto solo in memoria."
@@ -212,6 +219,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         currentMrzDiagnostic=mrzDiagnosticReport()
         report=currentMrzDiagnostic?:"Nessun report."
         pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD,origin=CredentialOrigin.SCANSIONE_MRZ)
+        credentialAcquiredAt=SystemClock.elapsedRealtime()
+        scheduleCredentialExpiry()
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<Button>(R.id.stopMrzDiagnostic).visibility=View.GONE
@@ -336,7 +345,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     startDocumentCamera()
                 }
                 NfcOutcome.READ_INTERRUPTED -> {
-                    if(credentials?.mode==AccessMode.CAN_PACE && canState()=="PRESENTE"){
+                    if(credentials?.mode==AccessMode.CAN_PACE && credentialState()=="CAN_PRESENTE"){
                         canInterruptions++
                         if(canInterruptions>=3){
                             findViewById<TextView>(R.id.status).text="Tre letture interrotte. Esegui una nuova scansione CAN."
@@ -385,26 +394,28 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         findViewById<TextView>(R.id.status)?.text="Nessun report."
     }
 
-    private fun canState():String {
-        val p=pending
-        val acquired=canAcquiredAt
-        if(p?.mode!=AccessMode.CAN_PACE || acquired==null)return "ASSENTE"
-        return if(SystemClock.elapsedRealtime()-acquired>=120000L)"SCADUTO" else "PRESENTE"
+    private fun credentialState():String {
+        val p=pending ?: return "ASSENTE"
+        val acquired=credentialAcquiredAt ?: return "ASSENTE"
+        if(SystemClock.elapsedRealtime()-acquired>=120000L)return "SCADUTA"
+        return if(p.mode==AccessMode.CAN_PACE)"CAN_PRESENTE" else "MRZ_PRESENTE"
     }
 
-    private fun scheduleCanExpiry(){
-        mainHandler.removeCallbacks(canExpiry)
-        mainHandler.postDelayed(canExpiry,120000L)
+    private fun scheduleCredentialExpiry(){
+        mainHandler.removeCallbacks(credentialExpiry)
+        val acquired=credentialAcquiredAt ?: return
+        val remaining=(120000L-(SystemClock.elapsedRealtime()-acquired)).coerceAtLeast(0L)
+        mainHandler.postDelayed(credentialExpiry,remaining)
     }
 
     private fun clearPendingCredentials(){
         pending=null
-        canAcquiredAt=null
-        mainHandler.removeCallbacks(canExpiry)
+        credentialAcquiredAt=null
+        mainHandler.removeCallbacks(credentialExpiry)
     }
 
     private fun traceLifecycle(event:String){
-        LifecycleTrace.add(activityId,event,canState())
+        LifecycleTrace.add(activityId,event,credentialState())
         updateLifecycleView()
     }
 
@@ -415,10 +426,10 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     override fun onResume(){
         super.onResume()
         traceLifecycle("onResume")
-        when(canState()){
-            "PRESENTE" -> armNfc("Avvicina di nuovo la CIE.")
-            "SCADUTO" -> {clearPendingCredentials();traceLifecycle("CAN_EXPIRED")}
-            else -> if(pending!=null) armNfc(if(pending?.origin==CredentialOrigin.SCANSIONE_MRZ)"MRZ verificata localmente. Avvicina il documento NFC." else "Avvicina di nuovo il documento NFC.")
+        when(credentialState()){
+            "CAN_PRESENTE" -> { scheduleCredentialExpiry(); armNfc("Avvicina di nuovo la CIE.") }
+            "MRZ_PRESENTE" -> { scheduleCredentialExpiry(); armNfc("MRZ verificata localmente. Avvicina il documento NFC.") }
+            "SCADUTA" -> { clearPendingCredentials(); traceLifecycle("CRED_EXPIRED"); findViewById<TextView>(R.id.scanStatus).text="Credenziale scaduta. Esegui una nuova scansione." }
         }
     }
 
