@@ -45,6 +45,12 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val activityId=LifecycleTrace.newActivityId()
     private var canAcquiredAt:Long?=null
     private var canInterruptions=0
+    private var mrzFrames=0
+    private var mrzRemovedChars=0
+    private val mrzLengths=mutableMapOf<Int,Int>()
+    private val mrzLinesPerFrame=mutableMapOf<Int,Int>()
+    private val mrzFormats=mutableMapOf<String,Int>()
+    private val mrzFailedChecks=mutableMapOf<String,Int>()
     private val mainHandler=Handler(Looper.getMainLooper())
     private val canExpiry=Runnable { if(canState()=="SCADUTO"){ clearPendingCredentials(); traceLifecycle("CAN_EXPIRED"); findViewById<TextView>(R.id.scanStatus).text="CAN scaduto. Esegui una nuova scansione." } }
     private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
@@ -72,6 +78,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             listOf(R.id.docNumber,R.id.birth,R.id.expiry).forEach{findViewById<EditText>(it).visibility=if(canMode)View.GONE else View.VISIBLE}
         }
 
+        findViewById<Button>(R.id.stopMrzDiagnostic).setOnClickListener{ stopMrzAndCopyDiagnostic() }
         findViewById<Button>(R.id.scanDocument).setOnClickListener{
             if(ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED) startDocumentCamera()
             else cameraPermission.launch(Manifest.permission.CAMERA)
@@ -92,6 +99,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         canInterruptions=0
         lastCanCandidate=null
         canStableFrames=0
+        resetMrzDiagnostics()
+        findViewById<Button>(R.id.stopMrzDiagnostic).visibility=if(scanKind==ScanKind.MRZ)View.VISIBLE else View.GONE
         val previewView=findViewById<PreviewView>(R.id.cameraPreview)
         previewView.visibility=View.VISIBLE
         findViewById<TextView>(R.id.scanStatus).text=if(scanKind==ScanKind.CIE_CAN)
@@ -110,7 +119,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     .addOnSuccessListener{text->
                         when(scanKind){
                             ScanKind.CIE_CAN -> observeCan(findCan(text.text), hasCieFrontMarker(text.text))
-                            ScanKind.MRZ -> MrzParser.parse(text.text)?.let{onMrzFound(it)}
+                            ScanKind.MRZ -> { val parsed=MrzParser.parseWithDiagnostic(text.text); observeMrzDiagnostic(parsed.second); parsed.first?.let{onMrzFound(it)} }
                         }
                     }
                     .addOnCompleteListener{recognizing.set(false);proxy.close()}
@@ -166,8 +175,48 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD,origin=CredentialOrigin.SCANSIONE_MRZ)
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
+        findViewById<Button>(R.id.stopMrzDiagnostic).visibility=View.GONE
         findViewById<TextView>(R.id.scanStatus).text="MRZ verificata. Dati mantenuti solo in memoria."
         armNfc("MRZ verificata localmente. Avvicina il documento NFC.")
+    }
+
+
+    private fun resetMrzDiagnostics(){
+        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear()
+    }
+
+    private fun observeMrzDiagnostic(d:MrzFrameDiagnostic){
+        mrzFrames++
+        mrzRemovedChars+=d.removedChars
+        d.candidateLengths.forEach{mrzLengths[it]=(mrzLengths[it]?:0)+1}
+        mrzLinesPerFrame[d.mlKitLineCount]=(mrzLinesPerFrame[d.mlKitLineCount]?:0)+1
+        mrzFormats[d.attemptedFormat]=(mrzFormats[d.attemptedFormat]?:0)+1
+        d.failedChecks.forEach{mrzFailedChecks[it]=(mrzFailedChecks[it]?:0)+1}
+    }
+
+    private fun mrzDiagnosticReport():String{
+        fun dist(m:Map<*,Int>)=if(m.isEmpty())"NESSUNO" else m.entries.sortedBy{it.key.toString()}.joinToString(", "){it.key.toString()+":"+it.value}
+        val avg=if(mrzFrames==0)0.0 else mrzRemovedChars.toDouble()/mrzFrames
+        return listOf(
+            "DIAGNOSTICA MRZ — SENZA PII",
+            "Fotogrammi analizzati: $mrzFrames",
+            "Lunghezze righe candidate: "+dist(mrzLengths),
+            "Righe ML Kit per fotogramma: "+dist(mrzLinesPerFrame),
+            "Formato tentato: "+dist(mrzFormats),
+            "Check falliti: "+dist(mrzFailedChecks),
+            "Caratteri rimossi normalizzazione: totale=$mrzRemovedChars; media/fotogramma="+String.format(java.util.Locale.US,"%.2f",avg)
+        ).joinToString("\n")
+    }
+
+    private fun stopMrzAndCopyDiagnostic(){
+        cameraProvider?.unbindAll()
+        findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
+        findViewById<Button>(R.id.stopMrzDiagnostic).visibility=View.GONE
+        val diagnostic=mrzDiagnosticReport()
+        report=diagnostic
+        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Diagnostica MRZ",diagnostic))
+        findViewById<TextView>(R.id.scanStatus).text="Scansione MRZ interrotta. Diagnostica senza PII copiata."
+        Toast.makeText(this,"Diagnostica MRZ senza PII copiata",Toast.LENGTH_SHORT).show()
     }
 
     private fun armNfc(message:String){
