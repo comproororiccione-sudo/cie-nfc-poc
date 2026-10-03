@@ -1,14 +1,7 @@
-import java.io.ByteArrayOutputStream
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-val gitSha = providers.exec {
-    commandLine("git", "rev-parse", "--short=8", "HEAD")
-    standardOutput = ByteArrayOutputStream()
-}.standardOutput.asText.get().trim()
-
 android {
     namespace = "it.cienfcpoc"
     compileSdk = 36
@@ -18,7 +11,7 @@ android {
         targetSdk = 36
         versionCode = 4
         versionName = "0.3.1"
-        buildConfigField("String", "GIT_SHA", "\\\"$gitSha\\\"")
+        buildConfigField("String", "GIT_SHA", "\\\"${providers.environmentVariable("GITHUB_SHA").orElse("LOCAL").get().take(8)}\\\"")
     }
     buildFeatures { buildConfig = true }
     compileOptions {
