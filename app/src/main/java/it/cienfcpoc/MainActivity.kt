@@ -52,6 +52,14 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val mrzFormats=mutableMapOf<String,Int>()
     private val mrzFailedChecks=mutableMapOf<String,Int>()
     private val mrzFillerLengths=mutableMapOf<Int,Int>()
+    private var mrzTd1Line1=0
+    private var mrzTd1Line2=0
+    private var mrzTd1Pairs=0
+    private val mrzTd1PairChecks=IntArray(4)
+    private var mrzTd1Line1MissingFrames=0
+    private var mrzTd1Line2MissingFrames=0
+    private var lastMrzKey:String?=null
+    private var mrzStableFrames=0
     private val mainHandler=Handler(Looper.getMainLooper())
     private val canExpiry=Runnable { if(canState()=="SCADUTO"){ clearPendingCredentials(); traceLifecycle("CAN_EXPIRED"); findViewById<TextView>(R.id.scanStatus).text="CAN scaduto. Esegui una nuova scansione." } }
     private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
@@ -120,7 +128,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     .addOnSuccessListener{text->
                         when(scanKind){
                             ScanKind.CIE_CAN -> observeCan(findCan(text.text), hasCieFrontMarker(text.text))
-                            ScanKind.MRZ -> { val parsed=MrzParser.parseWithDiagnostic(text.text); observeMrzDiagnostic(parsed.second); parsed.first?.let{onMrzFound(it)} }
+                            ScanKind.MRZ -> { val parsed=MrzParser.parseWithDiagnostic(text.text); observeMrzDiagnostic(parsed.second); observeMrzCandidate(parsed.first) }
                         }
                     }
                     .addOnCompleteListener{recognizing.set(false);proxy.close()}
@@ -171,6 +179,14 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         armNfc("CAN rilevato localmente. Avvicina la CIE.")
     }
 
+
+    private fun observeMrzCandidate(data:MrzAccessData?){
+        if(data==null){lastMrzKey=null;mrzStableFrames=0;return}
+        val key=data.documentNumber+"|"+data.birthYYMMDD+"|"+data.expiryYYMMDD
+        if(key==lastMrzKey)mrzStableFrames++ else {lastMrzKey=key;mrzStableFrames=1}
+        if(mrzStableFrames>=2)onMrzFound(data)
+    }
+
     private fun onMrzFound(data:MrzAccessData){
         if(pending!=null)return
         pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD,origin=CredentialOrigin.SCANSIONE_MRZ)
@@ -183,7 +199,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
 
     private fun resetMrzDiagnostics(){
-        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear();mrzFillerLengths.clear()
+        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear();mrzFillerLengths.clear();mrzTd1Line1=0;mrzTd1Line2=0;mrzTd1Pairs=0;mrzTd1PairChecks.fill(0);mrzTd1Line1MissingFrames=0;mrzTd1Line2MissingFrames=0;lastMrzKey=null;mrzStableFrames=0
     }
 
     private fun observeMrzDiagnostic(d:MrzFrameDiagnostic){
@@ -194,6 +210,10 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         mrzFormats[d.attemptedFormat]=(mrzFormats[d.attemptedFormat]?:0)+1
         d.failedChecks.forEach{mrzFailedChecks[it]=(mrzFailedChecks[it]?:0)+1}
         d.fillerLineLengths.forEach{mrzFillerLengths[it]=(mrzFillerLengths[it]?:0)+1}
+        mrzTd1Line1+=d.td1Line1Count;mrzTd1Line2+=d.td1Line2Count;mrzTd1Pairs+=d.td1PairsTried
+        for(i in 0..3)mrzTd1PairChecks[i]+=d.td1PairCheckCounts[i]
+        if(d.td1Line1Missing)mrzTd1Line1MissingFrames++
+        if(d.td1Line2Missing)mrzTd1Line2MissingFrames++
     }
 
     private fun mrzDiagnosticReport():String{
@@ -207,6 +227,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             "Righe con '<': distribuzione lunghezze: "+dist(mrzFillerLengths),
             "Formato tentato: "+dist(mrzFormats),
             "Check falliti: "+dist(mrzFailedChecks),
+            "TD1 righe riconosciute: riga1=$mrzTd1Line1; riga2=$mrzTd1Line2",
+            "TD1 coppie provate: $mrzTd1Pairs; check 3/3=${mrzTd1PairChecks[3]}, 2/3=${mrzTd1PairChecks[2]}, 1/3=${mrzTd1PairChecks[1]}, 0/3=${mrzTd1PairChecks[0]}",
+            "TD1 assenze per fotogramma: riga1=$mrzTd1Line1MissingFrames; riga2=$mrzTd1Line2MissingFrames",
             "Caratteri rimossi normalizzazione: totale=$mrzRemovedChars; media/fotogramma="+String.format(java.util.Locale.US,"%.2f",avg)
         ).joinToString("\n")
     }
