@@ -37,6 +37,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val recognizing=AtomicBoolean(false)
     private val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var cameraProvider:ProcessCameraProvider?=null
+    private var lastCanCandidate:String?=null
+    private var canStableFrames=0
     private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
         if(granted) startDocumentCamera() else Toast.makeText(this,"Permesso fotocamera necessario per la scansione",Toast.LENGTH_LONG).show()
     }
@@ -77,6 +79,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     private fun startDocumentCamera(){
         pending=null
+        lastCanCandidate=null
+        canStableFrames=0
         val previewView=findViewById<PreviewView>(R.id.cameraPreview)
         previewView.visibility=View.VISIBLE
         findViewById<TextView>(R.id.scanStatus).text=if(scanKind==ScanKind.CIE_CAN)
@@ -94,7 +98,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                 recognizer.process(InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees))
                     .addOnSuccessListener{text->
                         when(scanKind){
-                            ScanKind.CIE_CAN -> findCan(text.text)?.let{onCanFound(it)}
+                            ScanKind.CIE_CAN -> findCan(text.text)?.let{observeCan(it)}
                             ScanKind.MRZ -> MrzParser.parse(text.text)?.let{onMrzFound(it)}
                         }
                     }
@@ -106,8 +110,22 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun findCan(raw:String):String? {
-        val matches=Regex("(?<!\\d)\\d{6}(?!\\d)").findAll(raw).map{it.value}.distinct().toList()
+        val normalized=raw.uppercase()
+            .replace('À','A').replace('Á','A').replace('È','E').replace('É','E').replace('Ì','I').replace('Ò','O').replace('Ù','U')
+        val frontMarker=normalized.contains("CARTA DI IDENTITA") ||
+            normalized.contains("CARTA D'IDENTITA") ||
+            normalized.contains("IDENTITY CARD")
+        if(!frontMarker)return null
+        val matches=Regex("(?<!\\d)\\d{6}(?!\\d)").findAll(normalized).map{it.value}.distinct().toList()
         return matches.singleOrNull()
+    }
+
+    private fun observeCan(can:String){
+        if(can==lastCanCandidate) canStableFrames++ else {
+            lastCanCandidate=can
+            canStableFrames=1
+        }
+        if(canStableFrames>=3)onCanFound(can)
     }
 
     private fun onCanFound(can:String){
