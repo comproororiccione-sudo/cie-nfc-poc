@@ -82,8 +82,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val credentialExpiry=Runnable {
         if(credentialState()=="SCADUTA"){
             val wasMrz=pending?.origin==CredentialOrigin.SCANSIONE_MRZ || pending?.origin==CredentialOrigin.MANUALE_MRZ
-            clearPendingCredentials()
             traceLifecycle("CRED_EXPIRED")
+            clearPendingCredentials()
             findViewById<TextView>(R.id.scanStatus).text=if(wasMrz)"MRZ scaduta. Esegui una nuova scansione." else "CAN scaduto. Esegui una nuova scansione."
         }
     }
@@ -213,7 +213,10 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         mrzValid3Observed++;mrzValidKeys+=key
         val previous=mrzLastSeenFrame[key]
         previous?.let{prev->val distance=mrzFrames-prev;mrzMinRepeatDistance=mrzMinRepeatDistance?.let{old->minOf(old,distance)}?:distance}
-        if(previous!=null && mrzFrames-previous in 1..10)onMrzFound(data)
+        if(previous!=null && mrzFrames-previous in 1..10){
+            onMrzFound(data)
+            return
+        }
         mrzLastSeenFrame[key]=mrzFrames
         lastMrzKey=key;mrzStableFrames=1
     }
@@ -445,7 +448,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         when(credentialState()){
             "CAN_PRESENTE" -> { scheduleCredentialExpiry(); armNfc("Avvicina di nuovo la CIE.") }
             "MRZ_PRESENTE" -> { scheduleCredentialExpiry(); armNfc("MRZ verificata localmente. Avvicina il documento NFC.") }
-            "SCADUTA" -> { clearPendingCredentials(); traceLifecycle("CRED_EXPIRED"); findViewById<TextView>(R.id.scanStatus).text="Credenziale scaduta. Esegui una nuova scansione." }
+            "SCADUTA" -> { traceLifecycle("CRED_EXPIRED"); clearPendingCredentials(); findViewById<TextView>(R.id.scanStatus).text="Credenziale scaduta. Esegui una nuova scansione." }
         }
     }
 
