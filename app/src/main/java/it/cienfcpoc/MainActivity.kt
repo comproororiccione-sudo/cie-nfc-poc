@@ -173,13 +173,21 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         val result=if(credentials==null)NfcReadResult("CIE NFC POC — REPORT SENZA PII\nCredenziali: NON_DISPONIBILI","")
         else if(iso==null)NfcReadResult("CIE NFC POC — REPORT SENZA PII\nIsoDep: NON_DISPONIBILE","")
         else CieNfcReader().read(iso,credentials)
+        val retryCan=credentials?.mode==AccessMode.CAN_PACE && !result.report.contains("PACE-CAN: OK")
         report=result.report;pending=null
         runOnUiThread{
-            findViewById<TextView>(R.id.status).text=report
+            findViewById<TextView>(R.id.status).text=if(retryCan)"CAN non valido, riscansiona il fronte della CIE." else report
             findViewById<TextView>(R.id.screenData).text=result.screenData
-            findViewById<TextView>(R.id.scanStatus).text="Credenziale di accesso rimossa dalla memoria della sessione."
+            findViewById<TextView>(R.id.scanStatus).text=if(retryCan)
+                "PACE-CAN non riuscita. Riscansiona il fronte della CIE."
+            else "Credenziale di accesso rimossa dalla memoria della sessione."
             clearInputsUi()
             adapter?.disableReaderMode(this)
+            if(retryCan){
+                scanKind=ScanKind.CIE_CAN
+                findViewById<RadioButton>(R.id.documentCie).isChecked=true
+                startDocumentCamera()
+            }
         }
     }
 
