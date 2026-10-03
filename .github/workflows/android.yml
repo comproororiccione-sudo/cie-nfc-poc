@@ -15,7 +15,13 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Resolve source SHA
+        run: |
+          SOURCE_SHA=$(jq -r 'if .pull_request then .pull_request.head.sha else env.GITHUB_SHA end' "$GITHUB_EVENT_PATH")
+          echo "BUILD_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
+      - name: Checkout exact source SHA
+        run: git checkout --detach "$BUILD_SHA"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
