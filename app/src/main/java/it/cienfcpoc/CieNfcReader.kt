@@ -17,7 +17,8 @@ import org.jmrtd.lds.icao.DG12File
 import java.security.MessageDigest
 
 enum class AccessMode { CAN_PACE, MRZ_PACE_WITH_BAC_FALLBACK, BAC_ONLY }
-enum class CredentialOrigin { SCANSIONE_CAN, MANUALE_CAN, SCANSIONE_MRZ, MANUALE_MRZ }\ndata class NfcCredentials(val mode:AccessMode,val can:String?=null,val documentNumber:String?=null,val birthYYMMDD:String?=null,val expiryYYMMDD:String?=null,val origin:CredentialOrigin)
+enum class CredentialOrigin { SCANSIONE_CAN, MANUALE_CAN, SCANSIONE_MRZ, MANUALE_MRZ }
+data class NfcCredentials(val mode:AccessMode,val can:String?=null,val documentNumber:String?=null,val birthYYMMDD:String?=null,val expiryYYMMDD:String?=null,val origin:CredentialOrigin)
 data class NfcReadResult(val report:String,val screenData:String)
 
 class CieNfcReader {
