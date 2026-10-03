@@ -68,6 +68,10 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val mrzValidKeys=mutableSetOf<String>()
     private val mrzLastSeenFrame=mutableMapOf<String,Int>()
     private var mrzMinRepeatDistance:Int?=null
+    private var mrzFrozenObserved:Int?=null
+    private var mrzFrozenDistinct:Int?=null
+    private var mrzFrozenMinRepeatDistance:Int?=null
+    private var currentMrzDiagnostic:String?=null
     private var lastMrzKey:String?=null
     private var mrzStableFrames=0
     private val mainHandler=Handler(Looper.getMainLooper())
@@ -114,6 +118,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun startDocumentCamera(){
+        clearSessionOutput()
         clearPendingCredentials()
         canInterruptions=0
         lastCanCandidate=null
@@ -203,6 +208,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     private fun onMrzFound(data:MrzAccessData){
         if(pending!=null)return
+        freezeAndPurgeMrzTracking()
+        currentMrzDiagnostic=mrzDiagnosticReport()
+        report=currentMrzDiagnostic?:"Nessun report."
         pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD,origin=CredentialOrigin.SCANSIONE_MRZ)
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
@@ -219,7 +227,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         mrzTd1CheckNonNumeric=0;mrzTd1CheckWrong=0;mrzTd1FillerYes=0;mrzTd1FillerNo=0
         mrzTd1NonNumericWithFiller=0;mrzTd1NonNumericWithoutFiller=0;mrzTd1Pos14Filler=0;mrzTd1Pos14DigitLike=0;mrzTd1Pos14Other=0
         mrzTd1SuccessRaw=0;mrzTd1SuccessA=0;mrzTd1SuccessB=0;mrzTd1SuccessAB=0
-        mrzValid3Observed=0;mrzValidKeys.clear();mrzLastSeenFrame.clear();mrzMinRepeatDistance=null;lastMrzKey=null;mrzStableFrames=0
+        mrzValid3Observed=0;mrzValidKeys.clear();mrzLastSeenFrame.clear();mrzMinRepeatDistance=null
+        mrzFrozenObserved=null;mrzFrozenDistinct=null;mrzFrozenMinRepeatDistance=null;currentMrzDiagnostic=null;lastMrzKey=null;mrzStableFrames=0
     }
 
     private fun observeMrzDiagnostic(d:MrzFrameDiagnostic){
@@ -259,7 +268,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             "TD1 check non numerico x filler: presente=$mrzTd1NonNumericWithFiller; assente=$mrzTd1NonNumericWithoutFiller",
             "TD1 classe pos14: filler=$mrzTd1Pos14Filler; letteraSimileCifra=$mrzTd1Pos14DigitLike; altraLettera=$mrzTd1Pos14Other",
             "TD1 successi 3/3 per correzione: senza=$mrzTd1SuccessRaw; soloA=$mrzTd1SuccessA; soloB=$mrzTd1SuccessB; A+B=$mrzTd1SuccessAB",
-            "TD1 chiavi 3/3: osservate=$mrzValid3Observed; distinte=${mrzValidKeys.size}; distanzaMinimaRipetizione=${mrzMinRepeatDistance?.toString()?:"NESSUNA"}",
+            "TD1 chiavi 3/3: osservate=${mrzFrozenObserved?:mrzValid3Observed}; distinte=${mrzFrozenDistinct?:mrzValidKeys.size}; distanzaMinimaRipetizione=${(mrzFrozenMinRepeatDistance?:mrzMinRepeatDistance)?.toString()?:"NESSUNA"}",
             "Caratteri rimossi normalizzazione: totale=$mrzRemovedChars; media/fotogramma="+String.format(java.util.Locale.US,"%.2f",avg)
         ).joinToString("\n")
     }
@@ -268,7 +277,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<Button>(R.id.stopMrzDiagnostic).visibility=View.GONE
+        freezeAndPurgeMrzTracking()
         val diagnostic=mrzDiagnosticReport()
+        currentMrzDiagnostic=diagnostic
         report=diagnostic
         (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Diagnostica MRZ",diagnostic))
         findViewById<TextView>(R.id.scanStatus).text="Scansione MRZ interrotta. Diagnostica senza PII copiata."
@@ -304,7 +315,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             iso==null -> NfcReadResult("CIE NFC POC — REPORT SENZA PII\nIsoDep: NON_DISPONIBILE\nEsito: ERROR","",NfcOutcome.ERROR)
             else -> CieNfcReader().read(iso,credentials)
         }
-        report=result.report
+        report=if(credentials?.origin==CredentialOrigin.SCANSIONE_MRZ && currentMrzDiagnostic!=null)
+            result.report+"\n\n"+currentMrzDiagnostic
+        else result.report
         runOnUiThread{
             findViewById<TextView>(R.id.screenData).text=result.screenData
             adapter?.disableReaderMode(this)
@@ -349,6 +362,29 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    private fun freezeAndPurgeMrzTracking(){
+        if(mrzFrozenObserved==null){
+            mrzFrozenObserved=mrzValid3Observed
+            mrzFrozenDistinct=mrzValidKeys.size
+            mrzFrozenMinRepeatDistance=mrzMinRepeatDistance
+        }
+        purgeMrzTracking()
+    }
+
+    private fun purgeMrzTracking(){
+        mrzValidKeys.clear()
+        mrzLastSeenFrame.clear()
+        lastMrzKey=null
+        mrzStableFrames=0
+    }
+
+    private fun clearSessionOutput(){
+        report="Nessun report."
+        currentMrzDiagnostic=null
+        findViewById<TextView>(R.id.screenData)?.text=""
+        findViewById<TextView>(R.id.status)?.text="Nessun report."
+    }
+
     private fun canState():String {
         val p=pending
         val acquired=canAcquiredAt
@@ -382,6 +418,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         when(canState()){
             "PRESENTE" -> armNfc("Avvicina di nuovo la CIE.")
             "SCADUTO" -> {clearPendingCredentials();traceLifecycle("CAN_EXPIRED")}
+            else -> if(pending!=null) armNfc(if(pending?.origin==CredentialOrigin.SCANSIONE_MRZ)"MRZ verificata localmente. Avvicina il documento NFC." else "Avvicina di nuovo il documento NFC.")
         }
     }
 
@@ -393,6 +430,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     override fun onStop(){
         clearPendingCredentials()
+        purgeMrzTracking()
+        clearSessionOutput()
         traceLifecycle("onStop")
         super.onStop()
     }
