@@ -23,18 +23,31 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Privacy guard
+      - name: Privacy guard source manifest
         run: |
-          if grep -R --line-number 'android.permission.INTERNET' app/src/main; then
-            echo 'INTERNET permission is forbidden'
+          if grep -R --line-number 'android.permission.INTERNET' app/src/main | grep -v 'tools:node="remove"'; then
+            echo 'Unexpected INTERNET permission in source'
+            exit 1
+          fi
+          if grep -R --line-number 'android.permission.ACCESS_NETWORK_STATE' app/src/main | grep -v 'tools:node="remove"'; then
+            echo 'Unexpected ACCESS_NETWORK_STATE permission in source'
             exit 1
           fi
       - name: Build
         run: gradle :app:assembleDebug --stacktrace
-      - name: Built APK privacy check
+      - name: Final APK permissions
         run: |
-          if unzip -p app/build/outputs/apk/debug/app-debug.apk AndroidManifest.xml | strings | grep -q 'android.permission.INTERNET'; then
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n 1)
+          echo "Using $AAPT2"
+          "$AAPT2" dump permissions app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk-permissions.txt
+          echo "=== final uses-permission entries ==="
+          grep 'uses-permission' /tmp/apk-permissions.txt || true
+          if grep -q 'android.permission.INTERNET' /tmp/apk-permissions.txt; then
             echo 'INTERNET permission found in built APK'
+            exit 1
+          fi
+          if grep -q 'android.permission.ACCESS_NETWORK_STATE' /tmp/apk-permissions.txt; then
+            echo 'ACCESS_NETWORK_STATE permission found in built APK'
             exit 1
           fi
       - uses: actions/upload-artifact@v4
