@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                 recognizer.process(InputImage.fromMediaImage(media,proxy.imageInfo.rotationDegrees))
                     .addOnSuccessListener{text->
                         when(scanKind){
-                            ScanKind.CIE_CAN -> findCan(text.text)?.let{observeCan(it)}
+                            ScanKind.CIE_CAN -> observeCan(findCan(text.text), hasCieFrontMarker(text.text))
                             ScanKind.MRZ -> MrzParser.parse(text.text)?.let{onMrzFound(it)}
                         }
                     }
@@ -109,18 +109,29 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         },ContextCompat.getMainExecutor(this))
     }
 
-    private fun findCan(raw:String):String? {
-        val normalized=raw.uppercase()
-            .replace('À','A').replace('Á','A').replace('È','E').replace('É','E').replace('Ì','I').replace('Ò','O').replace('Ù','U')
-        val frontMarker=normalized.contains("CARTA DI IDENTITA") ||
+    private fun normalizeOcr(raw:String)=raw.uppercase()
+        .replace('À','A').replace('Á','A').replace('È','E').replace('É','E').replace('Ì','I').replace('Ò','O').replace('Ù','U')
+
+    private fun hasCieFrontMarker(raw:String):Boolean {
+        val normalized=normalizeOcr(raw)
+        return normalized.contains("CARTA DI IDENTITA") ||
             normalized.contains("CARTA D'IDENTITA") ||
             normalized.contains("IDENTITY CARD")
-        if(!frontMarker)return null
+    }
+
+    private fun findCan(raw:String):String? {
+        val normalized=normalizeOcr(raw)
+        if(!hasCieFrontMarker(normalized))return null
         val matches=Regex("(?<!\\d)\\d{6}(?!\\d)").findAll(normalized).map{it.value}.distinct().toList()
         return matches.singleOrNull()
     }
 
-    private fun observeCan(can:String){
+    private fun observeCan(can:String?,frontMarker:Boolean){
+        if(!frontMarker || can==null){
+            lastCanCandidate=null
+            canStableFrames=0
+            return
+        }
         if(can==lastCanCandidate) canStableFrames++ else {
             lastCanCandidate=can
             canStableFrames=1
@@ -130,7 +141,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     private fun onCanFound(can:String){
         if(pending!=null)return
-        pending=NfcCredentials(AccessMode.CAN_PACE,can=can)
+        pending=NfcCredentials(AccessMode.CAN_PACE,can=can,origin=CredentialOrigin.SCANSIONE_CAN)
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<TextView>(R.id.scanStatus).text="CAN rilevato. Valore nascosto e mantenuto solo in memoria."
@@ -139,7 +150,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     private fun onMrzFound(data:MrzAccessData){
         if(pending!=null)return
-        pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD)
+        pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD,origin=CredentialOrigin.SCANSIONE_MRZ)
         cameraProvider?.unbindAll()
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<TextView>(R.id.scanStatus).text="MRZ verificata. Dati mantenuti solo in memoria."
@@ -164,7 +175,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         val expiry=findViewById<EditText>(R.id.expiry).text.toString()
         val ok=if(mode==AccessMode.CAN_PACE)can.matches(Regex("\\d{6}")) else doc.isNotBlank()&&birth.matches(Regex("\\d{6}"))&&expiry.matches(Regex("\\d{6}"))
         if(!ok){Toast.makeText(this,"Controlla i dati inseriti",Toast.LENGTH_SHORT).show();return null}
-        return NfcCredentials(mode,if(mode==AccessMode.CAN_PACE)can else null,doc.ifBlank{null},birth.ifBlank{null},expiry.ifBlank{null})
+        return NfcCredentials(mode,if(mode==AccessMode.CAN_PACE)can else null,doc.ifBlank{null},birth.ifBlank{null},expiry.ifBlank{null},if(mode==AccessMode.CAN_PACE)CredentialOrigin.MANUALE_CAN else CredentialOrigin.MANUALE_MRZ)
     }
 
     override fun onTagDiscovered(tag:Tag){
