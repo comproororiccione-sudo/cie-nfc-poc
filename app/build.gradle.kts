@@ -11,7 +11,7 @@ android {
         targetSdk = 36
         versionCode = 4
         versionName = "0.3.1"
-        buildConfigField("String", "GIT_SHA", "\"${providers.environmentVariable("GITHUB_SHA").orElse("LOCAL").get().take(8)}\"")
+        buildConfigField("String", "GIT_SHA", "\"${providers.environmentVariable("BUILD_SHA").orElse("LOCAL").get().take(8)}\"")
     }
     buildFeatures { buildConfig = true }
     compileOptions {
