@@ -38,4 +38,5 @@ dependencies {
     implementation("org.jmrtd:jmrtd:0.8.8")
     implementation("net.sf.scuba:scuba-sc-android:0.0.26")
     implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
+    testImplementation("junit:junit:4.13.2")
 }
