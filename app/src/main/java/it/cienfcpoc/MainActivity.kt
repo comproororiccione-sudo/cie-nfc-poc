@@ -61,6 +61,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private var mrzTd3FailedDoc=0; private var mrzTd3FailedBirth=0; private var mrzTd3FailedExpiry=0
     private var mrzTd1CheckNonNumeric=0; private var mrzTd1CheckWrong=0
     private var mrzTd1FillerYes=0; private var mrzTd1FillerNo=0
+    private var mrzTd1NonNumericWithFiller=0; private var mrzTd1NonNumericWithoutFiller=0
+    private var mrzTd1Pos14Filler=0; private var mrzTd1Pos14DigitLike=0; private var mrzTd1Pos14Other=0
+    private var mrzTd1SuccessRaw=0; private var mrzTd1SuccessA=0; private var mrzTd1SuccessB=0; private var mrzTd1SuccessAB=0
     private var mrzValid3Observed=0
     private val mrzValidKeys=mutableSetOf<String>()
     private val mrzLastSeenFrame=mutableMapOf<String,Int>()
@@ -188,13 +191,14 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
 
     private fun observeMrzCandidate(data:MrzAccessData?){
-        if(data==null){lastMrzKey=null;mrzStableFrames=0;return}
+        if(data==null){return}
         val key=data.documentNumber+"|"+data.birthYYMMDD+"|"+data.expiryYYMMDD
         mrzValid3Observed++;mrzValidKeys+=key
         mrzLastSeenFrame[key]?.let{prev->val distance=mrzFrames-prev;mrzMinRepeatDistance=mrzMinRepeatDistance?.let{old->minOf(old,distance)}?:distance}
         mrzLastSeenFrame[key]=mrzFrames
-        if(key==lastMrzKey)mrzStableFrames++ else {lastMrzKey=key;mrzStableFrames=1}
-        if(mrzStableFrames>=2)onMrzFound(data)
+        val previous=mrzLastSeenFrame[key]
+        if(previous!=null && mrzFrames-previous<=10)onMrzFound(data)
+        lastMrzKey=key;mrzStableFrames=1
     }
 
     private fun onMrzFound(data:MrzAccessData){
@@ -213,6 +217,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         mrzTd1Line1Total=0;mrzTd1Line1Plausible=0;mrzTd1Line2=0;mrzTd1Pairs=0;mrzTd1PairChecks.fill(0)
         mrzTd1FailedDoc=0;mrzTd1FailedBirth=0;mrzTd1FailedExpiry=0;mrzTd3FailedDoc=0;mrzTd3FailedBirth=0;mrzTd3FailedExpiry=0
         mrzTd1CheckNonNumeric=0;mrzTd1CheckWrong=0;mrzTd1FillerYes=0;mrzTd1FillerNo=0
+        mrzTd1NonNumericWithFiller=0;mrzTd1NonNumericWithoutFiller=0;mrzTd1Pos14Filler=0;mrzTd1Pos14DigitLike=0;mrzTd1Pos14Other=0
+        mrzTd1SuccessRaw=0;mrzTd1SuccessA=0;mrzTd1SuccessB=0;mrzTd1SuccessAB=0
         mrzValid3Observed=0;mrzValidKeys.clear();mrzLastSeenFrame.clear();mrzMinRepeatDistance=null;lastMrzKey=null;mrzStableFrames=0
     }
 
@@ -229,6 +235,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         mrzTd3FailedDoc+=d.td3FailedDoc;mrzTd3FailedBirth+=d.td3FailedBirth;mrzTd3FailedExpiry+=d.td3FailedExpiry
         mrzTd1CheckNonNumeric+=d.td1CheckDigitNonNumeric;mrzTd1CheckWrong+=d.td1CheckDigitWrong
         mrzTd1FillerYes+=d.td1FillerPos1Present;mrzTd1FillerNo+=d.td1FillerPos1Absent
+        mrzTd1NonNumericWithFiller+=d.td1NonNumericWithFiller;mrzTd1NonNumericWithoutFiller+=d.td1NonNumericWithoutFiller
+        mrzTd1Pos14Filler+=d.td1Pos14Filler;mrzTd1Pos14DigitLike+=d.td1Pos14DigitLikeLetter;mrzTd1Pos14Other+=d.td1Pos14OtherLetter
+        mrzTd1SuccessRaw+=d.td1SuccessRaw;mrzTd1SuccessA+=d.td1SuccessA;mrzTd1SuccessB+=d.td1SuccessB;mrzTd1SuccessAB+=d.td1SuccessAB
     }
 
     private fun mrzDiagnosticReport():String{
@@ -247,6 +256,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             "TD1 coppie plausibili provate: $mrzTd1Pairs; check 3/3=${mrzTd1PairChecks[3]}, 2/3=${mrzTd1PairChecks[2]}, 1/3=${mrzTd1PairChecks[1]}, 0/3=${mrzTd1PairChecks[0]}",
             "TD1 numero documento: checkDigitNonNumerico=$mrzTd1CheckNonNumeric; checkDigitErrato=$mrzTd1CheckWrong",
             "TD1 posizione 1 filler: presente=$mrzTd1FillerYes; assente=$mrzTd1FillerNo",
+            "TD1 check non numerico x filler: presente=$mrzTd1NonNumericWithFiller; assente=$mrzTd1NonNumericWithoutFiller",
+            "TD1 classe pos14: filler=$mrzTd1Pos14Filler; letteraSimileCifra=$mrzTd1Pos14DigitLike; altraLettera=$mrzTd1Pos14Other",
+            "TD1 successi 3/3 per correzione: senza=$mrzTd1SuccessRaw; soloA=$mrzTd1SuccessA; soloB=$mrzTd1SuccessB; A+B=$mrzTd1SuccessAB",
             "TD1 chiavi 3/3: osservate=$mrzValid3Observed; distinte=${mrzValidKeys.size}; distanzaMinimaRipetizione=${mrzMinRepeatDistance?.toString()?:"NESSUNA"}",
             "Caratteri rimossi normalizzazione: totale=$mrzRemovedChars; media/fotogramma="+String.format(java.util.Locale.US,"%.2f",avg)
         ).joinToString("\n")
