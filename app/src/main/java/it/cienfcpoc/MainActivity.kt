@@ -52,12 +52,19 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val mrzFormats=mutableMapOf<String,Int>()
     private val mrzFailedChecks=mutableMapOf<String,Int>()
     private val mrzFillerLengths=mutableMapOf<Int,Int>()
-    private var mrzTd1Line1=0
+    private var mrzTd1Line1Total=0
+    private var mrzTd1Line1Plausible=0
     private var mrzTd1Line2=0
     private var mrzTd1Pairs=0
     private val mrzTd1PairChecks=IntArray(4)
-    private var mrzTd1Line1MissingFrames=0
-    private var mrzTd1Line2MissingFrames=0
+    private var mrzTd1FailedDoc=0; private var mrzTd1FailedBirth=0; private var mrzTd1FailedExpiry=0
+    private var mrzTd3FailedDoc=0; private var mrzTd3FailedBirth=0; private var mrzTd3FailedExpiry=0
+    private var mrzTd1CheckNonNumeric=0; private var mrzTd1CheckWrong=0
+    private var mrzTd1FillerYes=0; private var mrzTd1FillerNo=0
+    private var mrzValid3Observed=0
+    private val mrzValidKeys=mutableSetOf<String>()
+    private val mrzLastSeenFrame=mutableMapOf<String,Int>()
+    private var mrzMinRepeatDistance:Int?=null
     private var lastMrzKey:String?=null
     private var mrzStableFrames=0
     private val mainHandler=Handler(Looper.getMainLooper())
@@ -183,6 +190,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private fun observeMrzCandidate(data:MrzAccessData?){
         if(data==null){lastMrzKey=null;mrzStableFrames=0;return}
         val key=data.documentNumber+"|"+data.birthYYMMDD+"|"+data.expiryYYMMDD
+        mrzValid3Observed++;mrzValidKeys+=key
+        mrzLastSeenFrame[key]?.let{prev->val distance=mrzFrames-prev;mrzMinRepeatDistance=mrzMinRepeatDistance?.let{old->minOf(old,distance)}?:distance}
+        mrzLastSeenFrame[key]=mrzFrames
         if(key==lastMrzKey)mrzStableFrames++ else {lastMrzKey=key;mrzStableFrames=1}
         if(mrzStableFrames>=2)onMrzFound(data)
     }
@@ -199,7 +209,11 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
 
     private fun resetMrzDiagnostics(){
-        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear();mrzFillerLengths.clear();mrzTd1Line1=0;mrzTd1Line2=0;mrzTd1Pairs=0;mrzTd1PairChecks.fill(0);mrzTd1Line1MissingFrames=0;mrzTd1Line2MissingFrames=0;lastMrzKey=null;mrzStableFrames=0
+        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear();mrzFillerLengths.clear()
+        mrzTd1Line1Total=0;mrzTd1Line1Plausible=0;mrzTd1Line2=0;mrzTd1Pairs=0;mrzTd1PairChecks.fill(0)
+        mrzTd1FailedDoc=0;mrzTd1FailedBirth=0;mrzTd1FailedExpiry=0;mrzTd3FailedDoc=0;mrzTd3FailedBirth=0;mrzTd3FailedExpiry=0
+        mrzTd1CheckNonNumeric=0;mrzTd1CheckWrong=0;mrzTd1FillerYes=0;mrzTd1FillerNo=0
+        mrzValid3Observed=0;mrzValidKeys.clear();mrzLastSeenFrame.clear();mrzMinRepeatDistance=null;lastMrzKey=null;mrzStableFrames=0
     }
 
     private fun observeMrzDiagnostic(d:MrzFrameDiagnostic){
@@ -208,12 +222,13 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         d.candidateLengths.forEach{mrzLengths[it]=(mrzLengths[it]?:0)+1}
         mrzLinesPerFrame[d.mlKitLineCount]=(mrzLinesPerFrame[d.mlKitLineCount]?:0)+1
         mrzFormats[d.attemptedFormat]=(mrzFormats[d.attemptedFormat]?:0)+1
-        d.failedChecks.forEach{mrzFailedChecks[it]=(mrzFailedChecks[it]?:0)+1}
         d.fillerLineLengths.forEach{mrzFillerLengths[it]=(mrzFillerLengths[it]?:0)+1}
-        mrzTd1Line1+=d.td1Line1Count;mrzTd1Line2+=d.td1Line2Count;mrzTd1Pairs+=d.td1PairsTried
+        mrzTd1Line1Total+=d.td1Line1Total;mrzTd1Line1Plausible+=d.td1Line1Plausible;mrzTd1Line2+=d.td1Line2Count;mrzTd1Pairs+=d.td1PairsTried
         for(i in 0..3)mrzTd1PairChecks[i]+=d.td1PairCheckCounts[i]
-        if(d.td1Line1Missing)mrzTd1Line1MissingFrames++
-        if(d.td1Line2Missing)mrzTd1Line2MissingFrames++
+        mrzTd1FailedDoc+=d.td1FailedDoc;mrzTd1FailedBirth+=d.td1FailedBirth;mrzTd1FailedExpiry+=d.td1FailedExpiry
+        mrzTd3FailedDoc+=d.td3FailedDoc;mrzTd3FailedBirth+=d.td3FailedBirth;mrzTd3FailedExpiry+=d.td3FailedExpiry
+        mrzTd1CheckNonNumeric+=d.td1CheckDigitNonNumeric;mrzTd1CheckWrong+=d.td1CheckDigitWrong
+        mrzTd1FillerYes+=d.td1FillerPos1Present;mrzTd1FillerNo+=d.td1FillerPos1Absent
     }
 
     private fun mrzDiagnosticReport():String{
@@ -226,10 +241,13 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             "Righe ML Kit per fotogramma: "+dist(mrzLinesPerFrame),
             "Righe con '<': distribuzione lunghezze: "+dist(mrzFillerLengths),
             "Formato tentato: "+dist(mrzFormats),
-            "Check falliti: "+dist(mrzFailedChecks),
-            "TD1 righe riconosciute: riga1=$mrzTd1Line1; riga2=$mrzTd1Line2",
-            "TD1 coppie provate: $mrzTd1Pairs; check 3/3=${mrzTd1PairChecks[3]}, 2/3=${mrzTd1PairChecks[2]}, 1/3=${mrzTd1PairChecks[1]}, 0/3=${mrzTd1PairChecks[0]}",
-            "TD1 assenze per fotogramma: riga1=$mrzTd1Line1MissingFrames; riga2=$mrzTd1Line2MissingFrames",
+            "Check falliti TD1: documentNumber=$mrzTd1FailedDoc; birthDate=$mrzTd1FailedBirth; expiryDate=$mrzTd1FailedExpiry",
+            "Check falliti TD3: documentNumber=$mrzTd3FailedDoc; birthDate=$mrzTd3FailedBirth; expiryDate=$mrzTd3FailedExpiry",
+            "TD1 riga1: totali=$mrzTd1Line1Total; plausibili=$mrzTd1Line1Plausible; riga2=$mrzTd1Line2",
+            "TD1 coppie plausibili provate: $mrzTd1Pairs; check 3/3=${mrzTd1PairChecks[3]}, 2/3=${mrzTd1PairChecks[2]}, 1/3=${mrzTd1PairChecks[1]}, 0/3=${mrzTd1PairChecks[0]}",
+            "TD1 numero documento: checkDigitNonNumerico=$mrzTd1CheckNonNumeric; checkDigitErrato=$mrzTd1CheckWrong",
+            "TD1 posizione 1 filler: presente=$mrzTd1FillerYes; assente=$mrzTd1FillerNo",
+            "TD1 chiavi 3/3: osservate=$mrzValid3Observed; distinte=${mrzValidKeys.size}; distanzaMinimaRipetizione=${mrzMinRepeatDistance?.toString()?:"NESSUNA"}",
             "Caratteri rimossi normalizzazione: totale=$mrzRemovedChars; media/fotogramma="+String.format(java.util.Locale.US,"%.2f",avg)
         ).joinToString("\n")
     }
