@@ -24,7 +24,8 @@ enum class NfcOutcome { SUCCESS, CAN_REJECTED, READ_INTERRUPTED, ERROR }
 data class NfcReadResult(val report:String,val screenData:String,val outcome:NfcOutcome)
 
 object NfcFailureClassifier {
- fun isInterrupted(t:Throwable):Boolean=generateSequence(t as Throwable?){it.cause}.any{it is IOException || it.javaClass.simpleName=="TagLostException"}
+ fun ioCauseName(t:Throwable):String?=generateSequence(t as Throwable?){it.cause}.firstOrNull{it is IOException || it.javaClass.simpleName=="TagLostException"}?.let{if(it.javaClass.simpleName=="TagLostException")"TagLostException" else "IOException"}
+ fun isInterrupted(t:Throwable):Boolean=ioCauseName(t)!=null
  fun isCanRejectedDuringPace(t:Throwable):Boolean=!isInterrupted(t) && generateSequence(t as Throwable?){it.cause}.any{it is CardServiceException || it.javaClass.simpleName=="PACEException"}
 }
 
@@ -51,7 +52,7 @@ class CieNfcReader {
     else try{service.sendSelectApplet(false);out+="SELECT applet prima di BAC: OK";service.doBAC(key);out+=(if(c.mode==AccessMode.BAC_ONLY)"BAC SOLO (nuovo avvicinamento): OK" else "BAC fallback: OK");auth=true}catch(e:Exception){out+="BAC: "+status(e);auth=false}
    }
    if(auth){inspect(service,out,screen);outcome=NfcOutcome.SUCCESS} else out+="Accesso DG: NON_ESEGUITO"
-  }catch(e:Exception){out+="Sessione: "+status(e);outcome=if(NfcFailureClassifier.isInterrupted(e))NfcOutcome.READ_INTERRUPTED else if(outcome==NfcOutcome.CAN_REJECTED)NfcOutcome.CAN_REJECTED else NfcOutcome.ERROR}
+  }catch(e:Exception){out+="Sessione: "+status(e);val io=NfcFailureClassifier.ioCauseName(e);out+="Causa I/O in catena: "+if(io!=null)"SI ($io)" else "NO";outcome=if(io!=null)NfcOutcome.READ_INTERRUPTED else if(outcome==NfcOutcome.CAN_REJECTED)NfcOutcome.CAN_REJECTED else NfcOutcome.ERROR}
   finally{try{service?.close()}catch(_:Exception){};try{isoDep.close()}catch(_:Exception){};out+="Esito: "+outcome.name;out+="Tempo totale: "+(System.currentTimeMillis()-started)+"ms"}
   return NfcReadResult(out.joinToString("\n"),screen.joinToString("\n"),outcome)
  }
