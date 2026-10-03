@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.app.KeyguardManager
 import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
 import android.nfc.Tag
@@ -11,6 +12,7 @@ import android.nfc.tech.IsoDep
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
@@ -43,6 +45,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private var lastCanCandidate:String?=null
     private var canStableFrames=0
     private val activityId=LifecycleTrace.newActivityId()
+    private var readerModeActive=false
+    private var cameraBound=false
     private var credentialAcquiredAt:Long?=null
     private var canInterruptions=0
     private var mrzFrames=0
@@ -157,6 +161,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             }
             provider.unbindAll()
             provider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,analysis)
+            cameraBound=true
         },ContextCompat.getMainExecutor(this))
     }
 
@@ -195,7 +200,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         pending=NfcCredentials(AccessMode.CAN_PACE,can=can,origin=CredentialOrigin.SCANSIONE_CAN)
         credentialAcquiredAt=SystemClock.elapsedRealtime()
         scheduleCredentialExpiry()
-        cameraProvider?.unbindAll()
+        cameraProvider?.unbindAll();cameraBound=false
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<TextView>(R.id.scanStatus).text="CAN rilevato. Valore nascosto e mantenuto solo in memoria."
         armNfc("CAN rilevato localmente. Avvicina la CIE.")
@@ -221,7 +226,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         pending=NfcCredentials(AccessMode.BAC_ONLY,documentNumber=data.documentNumber,birthYYMMDD=data.birthYYMMDD,expiryYYMMDD=data.expiryYYMMDD,origin=CredentialOrigin.SCANSIONE_MRZ)
         credentialAcquiredAt=SystemClock.elapsedRealtime()
         scheduleCredentialExpiry()
-        cameraProvider?.unbindAll()
+        cameraProvider?.unbindAll();cameraBound=false
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<Button>(R.id.stopMrzDiagnostic).visibility=View.GONE
         findViewById<TextView>(R.id.scanStatus).text="MRZ verificata. Dati mantenuti solo in memoria."
@@ -283,7 +288,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun stopMrzAndCopyDiagnostic(){
-        cameraProvider?.unbindAll()
+        cameraProvider?.unbindAll();cameraBound=false
         findViewById<PreviewView>(R.id.cameraPreview).visibility=View.GONE
         findViewById<Button>(R.id.stopMrzDiagnostic).visibility=View.GONE
         freezeAndPurgeMrzTracking()
@@ -299,6 +304,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         findViewById<TextView>(R.id.status).text=message
         adapter?.enableReaderMode(this,this,NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
             Bundle().apply{putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY,250)})
+        readerModeActive=adapter!=null
     }
 
     private fun snapshotCredentials():NfcCredentials?{
@@ -329,7 +335,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         else result.report
         runOnUiThread{
             findViewById<TextView>(R.id.screenData).text=result.screenData
-            adapter?.disableReaderMode(this)
+            adapter?.disableReaderMode(this);readerModeActive=false
             when(result.outcome){
                 NfcOutcome.SUCCESS -> {
                     findViewById<TextView>(R.id.status).text=report
@@ -415,8 +421,18 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun traceLifecycle(event:String){
-        LifecycleTrace.add(activityId,event,credentialState())
+        LifecycleTrace.add(activityId,event,diagnosticState())
         updateLifecycleView()
+    }
+
+    private fun diagnosticState():String{
+        val interactive=try{(getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive}catch(_:Exception){null}
+        val locked=try{(getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked}catch(_:Exception){null}
+        return "CRED="+credentialState()+
+            " reader="+(if(readerModeActive)"ATTIVO" else "NON_ATTIVO")+
+            " camera="+(if(cameraBound)"BOUND" else "UNBOUND")+
+            " screen="+(when(interactive){true->"INTERATTIVO";false->"NON_INTERATTIVO";null->"ND"})+
+            " keyguard="+(when(locked){true->"BLOCCATO";false->"SBLOCCATO";null->"ND"})
     }
 
     private fun updateLifecycleView(){
@@ -434,25 +450,52 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     override fun onPause(){
-        adapter?.disableReaderMode(this)
+        adapter?.disableReaderMode(this);readerModeActive=false
         traceLifecycle("onPause")
         super.onPause()
     }
 
     override fun onStop(){
+        traceLifecycle("onStop(entrata) changingConfig="+isChangingConfigurations+" finishing="+isFinishing)
         clearPendingCredentials()
         purgeMrzTracking()
         clearSessionOutput()
-        traceLifecycle("onStop")
+        traceLifecycle("onStop(dopo_pulizia)")
         super.onStop()
+    }
+
+    override fun onStart(){
+        super.onStart()
+        traceLifecycle("onStart")
+    }
+
+    override fun onRestart(){
+        super.onRestart()
+        traceLifecycle("onRestart")
+    }
+
+    override fun onUserLeaveHint(){
+        traceLifecycle("onUserLeaveHint")
+        super.onUserLeaveHint()
+    }
+
+    override fun onWindowFocusChanged(hasFocus:Boolean){
+        super.onWindowFocusChanged(hasFocus)
+        traceLifecycle("onWindowFocusChanged("+hasFocus+")")
+    }
+
+    override fun onTopResumedActivityChanged(isTopResumedActivity:Boolean){
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        traceLifecycle("onTopResumedActivityChanged("+isTopResumedActivity+")")
     }
 
     private fun clearInputsUi(){listOf(R.id.can,R.id.docNumber,R.id.birth,R.id.expiry).forEach{findViewById<EditText>(it).text.clear()}}
     override fun onDestroy(){
+        traceLifecycle("onDestroy(entrata) changingConfig="+isChangingConfigurations+" finishing="+isFinishing)
         clearPendingCredentials()
-        traceLifecycle("onDestroy")
-        adapter?.disableReaderMode(this)
-        cameraProvider?.unbindAll()
+        adapter?.disableReaderMode(this);readerModeActive=false
+        cameraProvider?.unbindAll();cameraBound=false
+        traceLifecycle("onDestroy(dopo_pulizia)")
         recognizer.close()
         cameraExecutor.shutdownNow()
         clearInputsUi()
