@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private val mrzLinesPerFrame=mutableMapOf<Int,Int>()
     private val mrzFormats=mutableMapOf<String,Int>()
     private val mrzFailedChecks=mutableMapOf<String,Int>()
+    private val mrzFillerLengths=mutableMapOf<Int,Int>()
     private val mainHandler=Handler(Looper.getMainLooper())
     private val canExpiry=Runnable { if(canState()=="SCADUTO"){ clearPendingCredentials(); traceLifecycle("CAN_EXPIRED"); findViewById<TextView>(R.id.scanStatus).text="CAN scaduto. Esegui una nuova scansione." } }
     private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
@@ -182,7 +183,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
 
     private fun resetMrzDiagnostics(){
-        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear()
+        mrzFrames=0;mrzRemovedChars=0;mrzLengths.clear();mrzLinesPerFrame.clear();mrzFormats.clear();mrzFailedChecks.clear();mrzFillerLengths.clear()
     }
 
     private fun observeMrzDiagnostic(d:MrzFrameDiagnostic){
@@ -192,6 +193,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         mrzLinesPerFrame[d.mlKitLineCount]=(mrzLinesPerFrame[d.mlKitLineCount]?:0)+1
         mrzFormats[d.attemptedFormat]=(mrzFormats[d.attemptedFormat]?:0)+1
         d.failedChecks.forEach{mrzFailedChecks[it]=(mrzFailedChecks[it]?:0)+1}
+        d.fillerLineLengths.forEach{mrzFillerLengths[it]=(mrzFillerLengths[it]?:0)+1}
     }
 
     private fun mrzDiagnosticReport():String{
@@ -202,6 +204,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             "Fotogrammi analizzati: $mrzFrames",
             "Lunghezze righe candidate: "+dist(mrzLengths),
             "Righe ML Kit per fotogramma: "+dist(mrzLinesPerFrame),
+            "Righe con '<': distribuzione lunghezze: "+dist(mrzFillerLengths),
             "Formato tentato: "+dist(mrzFormats),
             "Check falliti: "+dist(mrzFailedChecks),
             "Caratteri rimossi normalizzazione: totale=$mrzRemovedChars; media/fotogramma="+String.format(java.util.Locale.US,"%.2f",avg)
