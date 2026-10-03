@@ -41,15 +41,15 @@ class CieNfcReader {
    var auth=false;var paceOk=false
    if(c.mode==AccessMode.CAN_PACE){
     val key=PACEKeySpec.createCANKey(c.can!!)
-    for(p in paceInfos)try{service.doPACE(key,p.objectIdentifier,PACEInfo.toParameterSpec(p.parameterId),p.parameterId);out+="PACE-CAN: OK";auth=true;paceOk=true;break}catch(e:Exception){out+="PACE-CAN: "+status(e);if(NfcFailureClassifier.isInterrupted(e))throw e;if(NfcFailureClassifier.isCanRejectedDuringPace(e))outcome=NfcOutcome.CAN_REJECTED else throw e}
-    if(auth)try{service.sendSelectApplet(true);out+="SELECT applet dopo PACE: OK"}catch(e:Exception){out+="SELECT applet dopo PACE: "+status(e);auth=false}
+    for(p in paceInfos)try{service.doPACE(key,p.objectIdentifier,PACEInfo.toParameterSpec(p.parameterId),p.parameterId);out+="PACE-CAN: OK";auth=true;paceOk=true;break}catch(e:Exception){out+="PACE-CAN: "+status(e);if(NfcFailureClassifier.isInterrupted(e))throw e;if(NfcFailureClassifier.isCanRejectedDuringPace(e)){out+="Causa I/O in catena: NO";outcome=NfcOutcome.CAN_REJECTED}else throw e}
+    if(auth)try{service.sendSelectApplet(true);out+="SELECT applet dopo PACE: OK"}catch(e:Exception){out+="SELECT applet dopo PACE: "+status(e);if(NfcFailureClassifier.isInterrupted(e))throw e;auth=false}
    } else {
     val key=BACKey(c.documentNumber,c.birthYYMMDD,c.expiryYYMMDD)
     if(c.mode==AccessMode.MRZ_PACE_WITH_BAC_FALLBACK){
-     for(p in paceInfos)try{service.doPACE(key,p.objectIdentifier,PACEInfo.toParameterSpec(p.parameterId),p.parameterId);out+="PACE-MRZ: OK";auth=true;paceOk=true;break}catch(e:Exception){out+="PACE-MRZ: "+status(e)}
+     for(p in paceInfos)try{service.doPACE(key,p.objectIdentifier,PACEInfo.toParameterSpec(p.parameterId),p.parameterId);out+="PACE-MRZ: OK";auth=true;paceOk=true;break}catch(e:Exception){out+="PACE-MRZ: "+status(e);if(NfcFailureClassifier.isInterrupted(e))throw e}
     }
     if(paceOk)try{service.sendSelectApplet(true);out+="SELECT applet dopo PACE: OK"}catch(e:Exception){out+="SELECT applet dopo PACE: "+status(e);auth=false}
-    else try{service.sendSelectApplet(false);out+="SELECT applet prima di BAC: OK";service.doBAC(key);out+=(if(c.mode==AccessMode.BAC_ONLY)"BAC SOLO (nuovo avvicinamento): OK" else "BAC fallback: OK");auth=true}catch(e:Exception){out+="BAC: "+status(e);auth=false}
+    else try{service.sendSelectApplet(false);out+="SELECT applet prima di BAC: OK";service.doBAC(key);out+=(if(c.mode==AccessMode.BAC_ONLY)"BAC SOLO (nuovo avvicinamento): OK" else "BAC fallback: OK");auth=true}catch(e:Exception){out+="BAC: "+status(e);if(NfcFailureClassifier.isInterrupted(e))throw e;auth=false}
    }
    if(auth){inspect(service,out,screen);outcome=NfcOutcome.SUCCESS} else out+="Accesso DG: NON_ESEGUITO"
   }catch(e:Exception){out+="Sessione: "+status(e);val io=NfcFailureClassifier.ioCauseName(e);out+="Causa I/O in catena: "+if(io!=null)"SI ($io)" else "NO";outcome=if(io!=null)NfcOutcome.READ_INTERRUPTED else if(outcome==NfcOutcome.CAN_REJECTED)NfcOutcome.CAN_REJECTED else NfcOutcome.ERROR}
