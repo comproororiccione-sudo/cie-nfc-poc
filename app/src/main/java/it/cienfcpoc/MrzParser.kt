@@ -7,7 +7,8 @@ data class MrzFrameDiagnostic(
     val mlKitLineCount:Int,
     val attemptedFormat:String,
     val failedChecks:Set<String>,
-    val removedChars:Int
+    val removedChars:Int,
+    val fillerLineLengths:List<Int>
 )
 
 object MrzParser {
@@ -22,6 +23,7 @@ object MrzParser {
             cleaned
         }
         val candidates=lines.filter { it.length>=10 }
+        val fillerLengths=lines.filter { it.contains("<") }.map { it.length }
         val parseable=lines.filter { it.length>=25 }
         var attempted="NESSUNO"
         val failed=linkedSetOf<String>()
@@ -37,7 +39,7 @@ object MrzParser {
                 )
                 checks.filterValues{!it}.keys.forEach{failed+=it}
                 if(checks.values.all{it}) return MrzAccessData(l.substring(0,9).replace("<",""),l.substring(13,19),l.substring(21,27)) to
-                    MrzFrameDiagnostic(candidates.map{it.length},raw.lines().count{it.isNotBlank()},"TD3",failed,removed)
+                    MrzFrameDiagnostic(candidates.map{it.length},raw.lines().count{it.isNotBlank()},"TD3",failed,removed,fillerLengths)
             }
             if(line.length>=30 && line[0] in setOf('I','A','C')){
                 attempted=if(attempted=="TD3")"TD3+TD1" else "TD1"
@@ -51,11 +53,11 @@ object MrzParser {
                     )
                     checks.filterValues{!it}.keys.forEach{failed+=it}
                     if(checks.values.all{it}) return MrzAccessData(l1.substring(5,14).replace("<",""),l2.substring(0,6),l2.substring(8,14)) to
-                        MrzFrameDiagnostic(candidates.map{it.length},raw.lines().count{it.isNotBlank()},"TD1",failed,removed)
+                        MrzFrameDiagnostic(candidates.map{it.length},raw.lines().count{it.isNotBlank()},"TD1",failed,removed,fillerLengths)
                 }
             }
         }
-        return null to MrzFrameDiagnostic(candidates.map{it.length},raw.lines().count{it.isNotBlank()},attempted,failed,removed)
+        return null to MrzFrameDiagnostic(candidates.map{it.length},raw.lines().count{it.isNotBlank()},attempted,failed,removed,fillerLengths)
     }
 
     private fun validField(value:String,check:Char):Boolean{
