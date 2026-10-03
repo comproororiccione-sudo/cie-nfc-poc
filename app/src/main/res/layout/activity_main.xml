@@ -10,6 +10,7 @@
 </RadioGroup>
 <Button android:id="@+id/scanDocument" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SCANSIONA CAN CIE"/>
 <androidx.camera.view.PreviewView android:id="@+id/cameraPreview" android:layout_width="match_parent" android:layout_height="240dp" android:visibility="gone"/>
+<Button android:id="@+id/stopMrzDiagnostic" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Interrompi scansione e copia diagnostica MRZ" android:visibility="gone"/>
 <TextView android:id="@+id/scanStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CAN/MRZ restano solo in memoria e non vengono copiati nel report." android:paddingTop="8dp" android:paddingBottom="12dp"/>
 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Modalità diagnostiche/manuali" android:textStyle="bold"/>
 <RadioGroup android:id="@+id/mode" android:layout_width="match_parent" android:layout_height="wrap_content">
